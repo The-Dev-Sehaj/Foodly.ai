@@ -11,7 +11,45 @@ interface SessionState {
   error: string | null;
 }
 
-const AUDIO_CHUNK_MS = 250;
+const AUDIO_CHUNK_MS = 2000;
+
+// Safe base64 encoder — avoids stack overflow from spread on large arrays
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Wrap raw PCM bytes in a WAV header (Gemini returns 24kHz 16-bit mono)
+function buildWav(pcm: Uint8Array): Uint8Array {
+  const sampleRate = 24000;
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+  const blockAlign = (numChannels * bitsPerSample) / 8;
+  const dataSize = pcm.length;
+  const wav = new Uint8Array(44 + dataSize);
+  const v = new DataView(wav.buffer);
+  const setStr = (offset: number, s: string) =>
+    s.split("").forEach((c, i) => v.setUint8(offset + i, c.charCodeAt(0)));
+  setStr(0, "RIFF");
+  v.setUint32(4, 36 + dataSize, true);
+  setStr(8, "WAVE");
+  setStr(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, numChannels, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, byteRate, true);
+  v.setUint16(32, blockAlign, true);
+  v.setUint16(34, bitsPerSample, true);
+  setStr(36, "data");
+  v.setUint32(40, dataSize, true);
+  wav.set(pcm, 44);
+  return wav;
+}
 
 export function useSession(recipe?: string) {
   const [state, setState] = useState<SessionState>({
@@ -25,41 +63,53 @@ export function useSession(recipe?: string) {
   const recordingRef = useRef<Audio.Recording | null>(null);
   const playbackRef = useRef<Audio.Sound | null>(null);
   const chunkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioQueueRef = useRef<string[]>([]);
+  const pcmBufferRef = useRef<number[]>([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPlayingRef = useRef(false);
 
   const setStatus = (status: SessionStatus) =>
     setState((s) => ({ ...s, status }));
 
-  // ── Audio playback queue ──────────────────────────────────────
-  const playNextChunk = useCallback(async () => {
-    if (isPlayingRef.current || audioQueueRef.current.length === 0) return;
-    const chunk = audioQueueRef.current.shift()!;
+  // ── Audio playback: buffer PCM chunks, flush as one WAV file after 80ms silence ──
+  const flushAndPlay = useCallback(async () => {
+    if (isPlayingRef.current || pcmBufferRef.current.length === 0) return;
+    const pcm = new Uint8Array(pcmBufferRef.current);
+    pcmBufferRef.current = [];
     isPlayingRef.current = true;
     try {
+      const wavBase64 = toBase64(buildWav(pcm));
       const { sound } = await Audio.Sound.createAsync(
-        { uri: `data:audio/pcm;base64,${chunk}` },
-        { shouldPlay: true, rate: 1.0 }
+        { uri: `data:audio/wav;base64,${wavBase64}` },
+        { shouldPlay: true }
       );
       playbackRef.current = sound;
+      (global as any).__foodlyIsPlaying = true;
       sound.setOnPlaybackStatusUpdate((s) => {
         if (s.isLoaded && s.didJustFinish) {
           isPlayingRef.current = false;
+          (global as any).__foodlyIsPlaying = false;
           sound.unloadAsync();
-          playNextChunk();
+          if (pcmBufferRef.current.length > 0) flushAndPlay();
         }
       });
-    } catch {
+    } catch (e) {
+      console.warn("[audio] playback failed:", e);
       isPlayingRef.current = false;
-      playNextChunk();
+      (global as any).__foodlyIsPlaying = false;
     }
   }, []);
 
   const onMessage = useCallback(
     (msg: any) => {
       if (msg.type === "audio") {
-        audioQueueRef.current.push(msg.data);
-        playNextChunk();
+        // Decode base64 PCM and accumulate bytes
+        const raw = atob(msg.data);
+        for (let i = 0; i < raw.length; i++) {
+          pcmBufferRef.current.push(raw.charCodeAt(i));
+        }
+        // Debounce: play 80ms after the last chunk in this response
+        if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = setTimeout(flushAndPlay, 80);
       } else if (msg.type === "session_end") {
         setState((s) => ({
           ...s,
@@ -70,7 +120,7 @@ export function useSession(recipe?: string) {
         stopRecording();
       }
     },
-    [playNextChunk]
+    [flushAndPlay]
   );
 
   const onDisconnect = useCallback(() => {
@@ -96,12 +146,9 @@ export function useSession(recipe?: string) {
       if (uri) {
         const response = await fetch(uri);
         const buffer = await response.arrayBuffer();
-        const base64 = btoa(
-          String.fromCharCode(...new Uint8Array(buffer))
-        );
-        wsRef.current.sendAudio(base64);
+        // Use safe encoder — avoids stack overflow on large buffers
+        wsRef.current.sendAudio(toBase64(new Uint8Array(buffer)));
       }
-      // Start next recording chunk immediately
       const newRec = new Audio.Recording();
       await newRec.prepareToRecordAsync(RECORDING_OPTIONS);
       await newRec.startAsync();
@@ -118,6 +165,7 @@ export function useSession(recipe?: string) {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        playThroughEarpiece: false,
       });
       const { granted } = await Audio.requestPermissionsAsync();
       if (!granted) throw new Error("Microphone permission denied");
@@ -126,15 +174,12 @@ export function useSession(recipe?: string) {
       wsRef.current = ws;
       await ws.connect(recipe);
 
-      // Start first recording chunk
       const rec = new Audio.Recording();
       await rec.prepareToRecordAsync(RECORDING_OPTIONS);
       await rec.startAsync();
       recordingRef.current = rec;
 
-      // Send a chunk every AUDIO_CHUNK_MS
       chunkIntervalRef.current = setInterval(sendAudioChunk, AUDIO_CHUNK_MS);
-
       setStatus("active");
     } catch (err: any) {
       setState((s) => ({ ...s, status: "idle", error: err.message }));

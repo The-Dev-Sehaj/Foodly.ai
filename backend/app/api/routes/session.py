@@ -3,7 +3,7 @@ import base64
 import json
 import time
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from app.api.deps import verify_token_raw, get_db
+from app.api.deps import verify_token_raw, get_user_info, get_db
 from app.services.gemini_live import GeminiLiveSession, build_system_prompt
 from app.services.memory_service import load_user_context, save_session, search_memories
 
@@ -16,21 +16,35 @@ async def cooking_session(websocket: WebSocket):
     db = get_db()
 
     # ── 1. Auth handshake ────────────────────────────────────────
+    async def reject(reason: str):
+        try:
+            await websocket.close(code=1008, reason=reason)
+        except Exception:
+            pass
+
     try:
         init_raw = await asyncio.wait_for(websocket.receive_text(), timeout=10)
         init_msg = json.loads(init_raw)
     except (asyncio.TimeoutError, Exception):
-        await websocket.close(code=1008, reason="Expected init message")
+        await reject("Expected init message")
         return
 
     if init_msg.get("type") != "init" or not init_msg.get("token"):
-        await websocket.close(code=1008, reason="Invalid init message")
+        await reject("Invalid init message")
         return
 
-    user_id = verify_token_raw(init_msg["token"])
-    if not user_id:
-        await websocket.close(code=1008, reason="Unauthorized")
+    user_info = get_user_info(init_msg["token"])
+    print(f"[session] user_info resolved: {user_info}")
+    if not user_info:
+        await reject("Unauthorized")
         return
+    user_id, user_email = user_info
+
+    # Ensure user row exists in public.users (trigger may not have fired on signup)
+    try:
+        db.table("users").upsert({"id": user_id, "email": user_email}).execute()
+    except Exception as e:
+        print(f"[session] User upsert warning: {e}")
 
     recipe_name: str | None = init_msg.get("recipe")
 
@@ -96,17 +110,20 @@ async def cooking_session(websocket: WebSocket):
 
     async def gemini_to_client(gemini: GeminiLiveSession):
         try:
-            async for audio_chunk in gemini.receive():
-                if session_stopped.is_set():
-                    break
-                encoded = base64.b64encode(audio_chunk).decode()
-                await websocket.send_text(json.dumps({"type": "audio", "data": encoded}))
-                log_event("audio_out", f"{len(audio_chunk)} bytes")
+            while not session_stopped.is_set():
+                async for audio_chunk in gemini.receive():
+                    if session_stopped.is_set():
+                        break
+                    encoded = base64.b64encode(audio_chunk).decode()
+                    await websocket.send_text(json.dumps({"type": "audio", "data": encoded}))
+                    log_event("audio_out", f"{len(audio_chunk)} bytes")
         except Exception:
             session_stopped.set()
 
     try:
+        print("[session] Connecting to Gemini Live...")
         async with GeminiLiveSession(system_prompt) as gemini:
+            print("[session] Gemini connected, starting relay")
             done, pending = await asyncio.wait(
                 [
                     asyncio.create_task(client_to_gemini(gemini)),
@@ -120,8 +137,8 @@ async def cooking_session(websocket: WebSocket):
                     await task
                 except (asyncio.CancelledError, Exception):
                     pass
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[session] Gemini connection failed: {type(e).__name__}: {e}")
 
     # ── 5. Persist session ───────────────────────────────────────
     duration = int(time.time() - start_time)
@@ -144,8 +161,8 @@ async def cooking_session(websocket: WebSocket):
                 "duration_seconds": duration,
             })
         )
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[session] Failed to save session: {type(e).__name__}: {e}")
 
     try:
         await websocket.close()

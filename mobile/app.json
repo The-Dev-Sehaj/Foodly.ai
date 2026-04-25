@@ -30,7 +30,7 @@
           "microphonePermission": "Foodly needs microphone access to hear you."
         }
       ],
-      "expo-asset"
+"expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

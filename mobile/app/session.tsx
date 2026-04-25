@@ -76,20 +76,25 @@ export default function SessionScreen() {
   useEffect(() => {
     if (status !== "active" || !cameraRef.current) return;
 
+    let capturing = false;
+
     videoIntervalRef.current = setInterval(async () => {
+      // Never interrupt Foodly mid-sentence — skip frame if audio is playing
+      if (capturing || !cameraRef.current || (global as any).__foodlyIsPlaying) return;
+      capturing = true;
       try {
-        const photo = await cameraRef.current?.takePictureAsync({
-          quality: 0.3,
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.05,   // minimum quality — smaller file = shorter preview pause
           base64: true,
           skipProcessing: true,
+          exif: false,
         });
         if (photo?.base64) {
-          // wsRef is managed by useSession — we piggyback on window.foodlyWs
-          // which is set by the hook's internal ws instance
           (global as any).__foodlyWs?.sendVideo(photo.base64);
         }
       } catch {}
-    }, 1500); // 2/3 FPS to keep bandwidth low
+      capturing = false;
+    }, 4000); // one frame every 4s — reduces shutter clicks and JS thread contention
 
     return () => {
       if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
@@ -132,6 +137,7 @@ export default function SessionScreen() {
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         facing="back"
+        animateShutter={false}
       />
 
       {/* Dark gradient overlay at top and bottom */}

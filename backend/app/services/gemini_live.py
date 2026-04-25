@@ -10,7 +10,10 @@ _client: genai.Client | None = None
 def get_client() -> genai.Client:
     global _client
     if _client is None:
-        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        _client = genai.Client(
+            api_key=settings.GEMINI_API_KEY,
+            http_options={"api_version": "v1beta"},
+        )
     return _client
 
 
@@ -80,11 +83,18 @@ class GeminiLiveSession:
         client = get_client()
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
-            system_instruction=self._system_prompt,
+            media_resolution="MEDIA_RESOLUTION_MEDIUM",
+            system_instruction=types.Content(
+                parts=[types.Part(text=self._system_prompt)]
+            ),
             speech_config=types.SpeechConfig(
                 voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Aoede")
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Zephyr")
                 )
+            ),
+            context_window_compression=types.ContextWindowCompressionConfig(
+                trigger_tokens=104857,
+                sliding_window=types.SlidingWindow(target_tokens=52428),
             ),
         )
         self._ctx = client.aio.live.connect(
@@ -99,6 +109,11 @@ class GeminiLiveSession:
 
     async def send_audio(self, pcm_data: bytes):
         """Send raw PCM audio (16kHz, 16-bit, mono) to Gemini."""
+        # Mobile records to .wav which includes a RIFF header — strip it
+        if pcm_data[:4] == b'RIFF':
+            pcm_data = pcm_data[44:]
+        if not pcm_data:
+            return
         await self._session.send_realtime_input(
             audio=types.Blob(data=pcm_data, mime_type="audio/pcm;rate=16000")
         )
@@ -134,16 +149,21 @@ async def generate_embedding(text: str) -> list[float]:
 
 async def summarize_session(events: list[dict]) -> str:
     """Ask Gemini to summarize a cooking session from logged events."""
-    client = get_client()
-    event_log = "\n".join(
-        f"[{e['time']}] {e['type']}: {e.get('detail', '')}" for e in events[:50]
-    )
-    prompt = (
-        f"Summarize this cooking session in 2-3 sentences for memory storage. "
-        f"Focus on what was cooked, any issues, and what the user did well or struggled with:\n\n{event_log}"
-    )
-    response = await client.aio.models.generate_content(
-        model="models/gemini-2.0-flash",
-        contents=prompt,
-    )
-    return response.text.strip()
+    try:
+        client = get_client()
+        event_log = "\n".join(
+            f"[{e['time']}] {e['type']}: {e.get('detail', '')}" for e in events[:50]
+        )
+        prompt = (
+            f"Summarize this cooking session in 2-3 sentences for memory storage. "
+            f"Focus on what was cooked, any issues, and what the user did well or struggled with:\n\n{event_log}"
+        )
+        response = await client.aio.models.generate_content(
+            model="models/gemini-2.0-flash",
+            contents=prompt,
+        )
+        return response.text.strip()
+    except Exception as e:
+        print(f"[summarize] Gemini summarization failed, using fallback: {e}")
+        audio_turns = sum(1 for ev in events if ev["type"] == "audio_in")
+        return f"Cooking session with {audio_turns} audio exchanges."
