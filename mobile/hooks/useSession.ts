@@ -77,18 +77,31 @@ export function useSession(recipe?: string) {
     pcmBufferRef.current = [];
     isPlayingRef.current = true;
     try {
+      // Switch to music mode so Android routes audio to the loudspeaker at full volume.
+      // allowsRecordingIOS:true puts Android in MODE_IN_COMMUNICATION (earpiece/quiet).
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        playThroughEarpiece: false,
+      });
       const wavBase64 = toBase64(buildWav(pcm));
       const { sound } = await Audio.Sound.createAsync(
         { uri: `data:audio/wav;base64,${wavBase64}` },
-        { shouldPlay: true }
+        { shouldPlay: true, volume: 1.0 }
       );
       playbackRef.current = sound;
       (global as any).__foodlyIsPlaying = true;
-      sound.setOnPlaybackStatusUpdate((s) => {
+      sound.setOnPlaybackStatusUpdate(async (s) => {
         if (s.isLoaded && s.didJustFinish) {
           isPlayingRef.current = false;
           (global as any).__foodlyIsPlaying = false;
           sound.unloadAsync();
+          // Restore recording mode
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+            playThroughEarpiece: false,
+          }).catch(() => {});
           if (pcmBufferRef.current.length > 0) flushAndPlay();
         }
       });
@@ -96,6 +109,12 @@ export function useSession(recipe?: string) {
       console.warn("[audio] playback failed:", e);
       isPlayingRef.current = false;
       (global as any).__foodlyIsPlaying = false;
+      // Restore recording mode on failure
+      Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        playThroughEarpiece: false,
+      }).catch(() => {});
     }
   }, []);
 
