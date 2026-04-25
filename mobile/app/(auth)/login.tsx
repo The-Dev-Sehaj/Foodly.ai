@@ -28,9 +28,11 @@ export default function LoginScreen() {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        Alert.alert("Check your email", "We sent you a confirmation link.");
+        if (!data.session) {
+          Alert.alert("Check your email", "We sent you a confirmation link.");
+        }
       }
     } catch (err: any) {
       Alert.alert("Error", err.message);

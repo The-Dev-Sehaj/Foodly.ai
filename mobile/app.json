@@ -4,12 +4,8 @@
     "slug": "foodly-ai",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "scheme": "foodly",
-    "splash": {
-      "backgroundColor": "#0A0A0A"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.foodly.ai",
@@ -19,9 +15,6 @@
       }
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#0A0A0A"
-      },
       "package": "com.foodly.ai",
       "permissions": [
         "android.permission.CAMERA",
@@ -36,7 +29,8 @@
           "cameraPermission": "Foodly needs camera access to watch you cook.",
           "microphonePermission": "Foodly needs microphone access to hear you."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

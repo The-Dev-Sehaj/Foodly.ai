@@ -14,11 +14,25 @@ export default function RootLayout() {
       setSession(data.session);
       setLoading(false);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_e, s) =>
-      setSession(s)
-    );
+    const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s);
+    });
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    
+    // Quick routing based on session
+    setTimeout(() => {
+      const { router } = require("expo-router");
+      if (session) {
+        router.replace("/(tabs)");
+      } else {
+        router.replace("/(auth)/login");
+      }
+    }, 100);
+  }, [session, loading]);
 
   if (loading) return null;
 
@@ -26,17 +40,12 @@ export default function RootLayout() {
     <>
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
-        {session ? (
-          <>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen
-              name="session"
-              options={{ presentation: "fullScreenModal" }}
-            />
-          </>
-        ) : (
-          <Stack.Screen name="(auth)" />
-        )}
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen
+          name="session"
+          options={{ presentation: "fullScreenModal" }}
+        />
       </Stack>
     </>
   );

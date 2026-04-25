@@ -4,3 +4,10 @@
 
 expo-env.d.ts
 # @end expo-cli
+
+node_modules/
+.expo/
+dist/
+web-build/
+.env
+.DS_Store
