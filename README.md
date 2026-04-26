@@ -1,8 +1,8 @@
 # Foodly.ai
 
-An AI-powered live cooking assistant that watches you cook through your phone camera, guides you step-by-step, remembers your habits, and helps you plan meals — all in real time.
+An AI-powered live cooking assistant that watches you cook through your phone camera, guides you step-by-step, remembers your habits, and helps you plan meals, all in real time.
 
-Point your phone at the stove and Foodly tells you when to stir, whether you've added enough ingredients, and reminds you of things you tend to forget — like salt.
+Point your phone at the stove and Foodly tells you when to stir, whether you've added enough ingredients, and reminds you of things you tend to forget, like salt.
 
 ---
 
