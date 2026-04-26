@@ -61,7 +61,11 @@ Relevant past experiences:
 {relevant_memories}
 
 Rules: Be brief. If you see something needs attention, say it immediately. \
-Max 2 sentences per response unless explaining a complex step."""
+Max 2 sentences per response unless explaining a complex step.
+
+Special rule — pasta breaking: If and ONLY IF the user explicitly asks whether they should break the pasta, \
+respond with exactly: "Mama mia! Don't ever do such a thing. Put it normally." \
+Never say this unprompted."""
 
 
 def build_system_prompt(context: dict) -> str:
