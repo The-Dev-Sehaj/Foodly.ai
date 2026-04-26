@@ -1,8 +1,8 @@
-# Foodly.ai
+# foodly.ai
 
 An AI-powered live cooking assistant that watches you cook through your phone camera, guides you step-by-step, remembers your habits, and helps you plan meals — all in real time.
 
-Point your phone at the stove and Foodly tells you when to stir, whether you've added enough ingredients, and reminds you of things you tend to forget — like salt.
+Point your phone at the stove and foodly tells you when to stir, whether you've added enough ingredients, and reminds you of things you tend to forget — like salt.
 
 ---
 
@@ -10,7 +10,7 @@ Point your phone at the stove and Foodly tells you when to stir, whether you've 
 
 ### Live Cooking Sessions
 - Tap **Start Cooking** on the home screen, optionally type a dish or pick one from the quick-start grid
-- Foodly greets you first and confirms it knows what you're making
+- foodly greets you first and confirms it knows what you're making
 - Streams audio (16kHz PCM) and video frames (JPEG, ~0.25 FPS) over WebSocket to the backend
 - Gemini Live API responds with voice guidance in real time (24kHz PCM audio played back on device)
 - Session status pill and animated recording dot give live feedback on connection state
@@ -19,11 +19,11 @@ Point your phone at the stove and Foodly tells you when to stir, whether you've 
 ### Personalized Coaching via User Profile
 - Set your **skill level** (Beginner / Intermediate / Advanced) in the Profile tab
 - Set **dietary restrictions** (vegetarian, vegan, gluten-free, dairy-free, nut-free, halal, kosher)
-- Both are injected directly into Gemini's system prompt at session start — Foodly adjusts its explanations and will never suggest restricted ingredients without offering substitutions
+- Both are injected directly into Gemini's system prompt at session start — foodly adjusts its explanations and will never suggest restricted ingredients without offering substitutions
 
 ### Session Memory
 - After each session, the backend generates a structured summary and a semantic embedding (Gemini text-embedding-004, 768 dimensions) stored in Supabase with pgvector
-- When you start a new session, Foodly loads your last 5 sessions and performs a vector similarity search for past sessions relevant to the current recipe — all injected as context so Foodly can reference what you've done before
+- When you start a new session, foodly loads your last 5 sessions and performs a vector similarity search for past sessions relevant to the current recipe — all injected as context so foodly can reference what you've done before
 
 ### Cooking History
 - **History tab** lists all past sessions with recipe name, date, duration, and completion percentage
@@ -33,10 +33,10 @@ Point your phone at the stove and Foodly tells you when to stir, whether you've 
   - What was discussed / coaching moments
   - Tips to remember for next time
   - Ingredients list
-- Delete any session — it is permanently removed from Supabase and Foodly will no longer reference it in future sessions
+- Delete any session — it is permanently removed from Supabase and foodly will no longer reference it in future sessions
 
 ### AI Recipe Generator
-- **Recipes tab** — type any request ("spicy chicken tacos", "quick vegan pasta", "15-minute dinner") and Foodly generates a full recipe using Gemini 2.5 Flash Lite
+- **Recipes tab** — type any request ("spicy chicken tacos", "quick vegan pasta", "15-minute dinner") and foodly generates a full recipe using Gemini 2.5 Flash Lite
 - Each recipe is saved to your account and displayed as a card
 - Tap a card to expand it inline and see:
   - Ingredient list with quantities (displayed as chips)
@@ -45,7 +45,7 @@ Point your phone at the stove and Foodly tells you when to stir, whether you've 
 - Delete recipes you no longer want
 
 ### UI & Design
-- Warm Foodly brand theme throughout: cream `#FAF5EE`, brown `#3D2010`, amber `#C4813A`
+- Warm foodly brand theme throughout: cream `#FAF5EE`, brown `#3D2010`, amber `#C4813A`
 - Spring/fade/slide animations on every screen using React Native Animated and Reanimated
 - Floating 🦫 mascot on the login and home screens
 - Dark camera view during sessions with amber recording dot glow, branded status pills, and an amber End Session button
@@ -104,7 +104,7 @@ Semantic search is handled by a `match_cooking_sessions()` PostgreSQL function u
 ## Project structure
 
 ```
-Foodly.ai/
+foodly.ai/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                  # FastAPI app entry point
@@ -129,7 +129,7 @@ Foodly.ai/
 │   │   └── session.tsx              # Live cooking screen (camera + audio)
 │   ├── hooks/useSession.ts          # Audio chunking, WebSocket lifecycle
 │   └── services/
-│       ├── websocket.ts             # FoodlyWebSocket class
+│       ├── websocket.ts             # foodlyWebSocket class
 │       ├── api.ts                   # HTTP API calls + TypeScript types
 │       └── supabase.ts              # Supabase client
 └── supabase/
@@ -240,11 +240,11 @@ Scan the QR code with **Expo Go**.
 1. Sign up with any email and password
 2. Go to **Profile** and set your skill level and dietary restrictions
 3. On **Cook**, type what you're making or pick a quick-start recipe and tap **Start Cooking**
-4. Grant camera and microphone permissions — Foodly will greet you first
+4. Grant camera and microphone permissions — foodly will greet you first
 5. Place your phone on a stand pointing at your workspace and cook
 6. Tap **End Session** when done — your session is summarized and saved
 7. View the full breakdown under **History** → tap any session
-8. Use the **Recipes** tab to ask Foodly for any recipe on demand
+8. Use the **Recipes** tab to ask foodly for any recipe on demand
 
 ---
 
