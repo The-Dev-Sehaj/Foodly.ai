@@ -58,10 +58,12 @@ async def save_session(
     completion_percentage: int,
     duration_seconds: int,
     db: Client,
+    transcript: list[str] | None = None,
 ) -> str:
     """Summarize session, embed it, and persist everything to Supabase."""
     session_id = str(uuid4())
-    summary = await summarize_session(events)
+    details = await summarize_session(events, recipe_name, duration_seconds, transcript)
+    summary = details.get("summary", "")
     embedding = await generate_embedding(summary)
 
     row = {
@@ -69,6 +71,7 @@ async def save_session(
         "user_id": user_id,
         "recipe_name": recipe_name,
         "summary": summary,
+        "details": details,
         "duration_seconds": duration_seconds,
         "completion_percentage": completion_percentage,
         "created_at": datetime.now(timezone.utc).isoformat(),

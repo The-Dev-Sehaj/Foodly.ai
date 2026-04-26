@@ -28,9 +28,14 @@ Your job:
 - Keep ALL responses SHORT and ACTION-ORIENTED (user's hands are busy)
 - Speak naturally and encouragingly
 
-User Profile:
-  Dietary restrictions: {dietary_restrictions}
+IMPORTANT — User Profile (always apply this):
   Skill level: {skill_level}
+    → If beginner: explain every step clearly, don't assume knowledge.
+    → If intermediate: give tips and shortcuts, skip obvious basics.
+    → If advanced: be concise, focus on technique and refinement.
+  Dietary restrictions: {dietary_restrictions}
+    → NEVER suggest or allow ingredients that violate these restrictions.
+    → If a step involves a restricted ingredient, immediately offer a substitution.
   Equipment: {equipment}
 
 Recent cooking sessions:
@@ -48,7 +53,7 @@ Max 2 sentences per response unless explaining a complex step."""
 
 def build_system_prompt(context: dict) -> str:
     recent = "\n".join(
-        f"  - {s['recipe_name']} ({s['date'][:10]}): {s.get('summary', 'no summary')}"
+        f"  - {s['recipe_name']} ({s.get('created_at', '')[:10]}): {s.get('summary', 'no summary')}"
         for s in context.get("recent_sessions", [])
     ) or "  No recent sessions."
 
@@ -151,23 +156,63 @@ async def generate_embedding(text: str) -> list[float]:
         return []
 
 
-async def summarize_session(events: list[dict]) -> str:
-    """Ask Gemini to summarize a cooking session from logged events."""
+async def summarize_session(
+    events: list[dict],
+    recipe_name: str | None = None,
+    duration_seconds: int = 0,
+    transcript: list[str] | None = None,
+) -> dict:
+    """Generate a structured session summary for storage and the history detail screen."""
+    import json as _json
+    audio_turns = sum(1 for ev in events if ev["type"] == "audio_in")
+    duration_min = max(1, duration_seconds // 60)
+    recipe_label = recipe_name or "a free cooking session"
+
+    transcript_section = ""
+    if transcript:
+        lines = "\n".join(f"- {t}" for t in transcript if t.strip())
+        transcript_section = f"\n\nActual transcript of what Foodly said during the session:\n{lines}"
+    else:
+        transcript_section = f"\n\n(No transcript available — infer from recipe context.)"
+
     try:
-        event_log = "\n".join(
-            f"[{e['time']}] {e['type']}: {e.get('detail', '')}" for e in events[:50]
-        )
-        prompt = (
-            "Summarize this cooking session in 2-3 sentences for memory storage. "
-            "Focus on what was cooked, any issues, and what the user did well or struggled with:\n\n"
-            + event_log
-        )
+        prompt = f"""You are creating a history entry for a Foodly AI cooking session.
+
+Session info:
+- Recipe: {recipe_label}
+- Duration: {duration_min} minutes
+- User audio interactions: {audio_turns}{transcript_section}
+
+Return ONLY a valid JSON object with exactly these keys — no markdown, no explanation:
+{{
+  "summary": "2-3 sentence overview of how the session went based on the transcript",
+  "steps": ["Step 1: ...", "Step 2: ...", "Step 3: ..."],
+  "highlights": ["Specific thing discussed or coached 1", "Specific thing discussed 2", "Specific thing discussed 3"],
+  "tips": ["Actionable tip from this session 1", "Actionable tip 2"],
+  "ingredients": ["ingredient 1", "ingredient 2", "ingredient 3"]
+}}
+
+For summary: use the transcript to describe what actually happened, not generic statements.
+For steps: the main recipe steps for {recipe_label} (up to 6, concise).
+For highlights: pull specific coaching moments or topics from the transcript (up to 4).
+For tips: reminders worth keeping for next time based on what came up (up to 3).
+For ingredients: any ingredients mentioned in the transcript (up to 10, or infer for {recipe_label})."""
+
         response = await get_client().aio.models.generate_content(
             model="gemini-1.5-flash",
             contents=prompt,
         )
-        return response.text.strip()
+        text = response.text.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            text = "\n".join(lines[1:-1])
+        return _json.loads(text)
     except Exception as e:
-        print(f"[summarize] failed, using fallback: {e}")
-        audio_turns = sum(1 for ev in events if ev["type"] == "audio_in")
-        return f"Cooking session with {audio_turns} audio exchanges."
+        print(f"[summarize] structured summary failed: {e}")
+        return {
+            "summary": f"Cooking session{f' for {recipe_name}' if recipe_name else ''} with {audio_turns} audio exchanges.",
+            "steps": [],
+            "highlights": [],
+            "tips": [],
+            "ingredients": [],
+        }

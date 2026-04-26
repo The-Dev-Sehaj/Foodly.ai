@@ -51,15 +51,24 @@ async def cooking_session(websocket: WebSocket):
     # ── 2. Build system prompt with user memory ──────────────────
     try:
         context = await load_user_context(user_id, db)
-        if recipe_name:
+        print(f"[session] profile loaded: skill={context.get('profile', {}).get('skill_level')} dietary={context.get('profile', {}).get('dietary_restrictions')}")
+    except Exception as e:
+        print(f"[session] load_user_context failed: {e}")
+        context = {}
+
+    if recipe_name:
+        try:
             memories = await search_memories(user_id, recipe_name, db)
             context["relevant_memories"] = memories
-        system_prompt = build_system_prompt(context)
-    except Exception:
-        system_prompt = build_system_prompt({})
+        except Exception as e:
+            print(f"[session] search_memories failed (non-fatal): {e}")
+            context["relevant_memories"] = []
+
+    system_prompt = build_system_prompt(context)
 
     # ── 3. Session event log ─────────────────────────────────────
     events: list[dict] = []
+    gemini_transcript: list[str] = []
     start_time = time.time()
 
     def log_event(event_type: str, detail: str = "", **kwargs):
@@ -182,6 +191,7 @@ async def cooking_session(websocket: WebSocket):
             events=events,
             completion_percentage=completion,
             duration_seconds=duration,
+            transcript=gemini_transcript,
             db=db,
         )
         await websocket.send_text(
