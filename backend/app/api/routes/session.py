@@ -85,12 +85,18 @@ async def cooking_session(websocket: WebSocket):
 
                 if msg_type == "audio":
                     pcm_data = base64.b64decode(msg["data"])
-                    await gemini.send_audio(pcm_data)
-                    log_event("audio_in", f"{len(pcm_data)} bytes")
+                    try:
+                        await gemini.send_audio(pcm_data)
+                        log_event("audio_in", f"{len(pcm_data)} bytes")
+                    except Exception as e:
+                        print(f"[session] audio send error (non-fatal): {type(e).__name__}: {e}")
 
                 elif msg_type == "video":
                     jpeg_data = base64.b64decode(msg["data"])
-                    await gemini.send_video_frame(jpeg_data)
+                    try:
+                        await gemini.send_video_frame(jpeg_data)
+                    except Exception as e:
+                        print(f"[session] video send error (non-fatal): {type(e).__name__}: {e}")
 
                 elif msg_type == "event":
                     log_event(
@@ -104,20 +110,28 @@ async def cooking_session(websocket: WebSocket):
                     break
 
         except WebSocketDisconnect:
+            print("[session] client disconnected")
             session_stopped.set()
-        except Exception:
+        except Exception as e:
+            print(f"[session] client_to_gemini fatal error: {type(e).__name__}: {e}")
             session_stopped.set()
 
     async def gemini_to_client(gemini: GeminiLiveSession):
+        turn = 0
         try:
             while not session_stopped.is_set():
+                turn += 1
+                print(f"[gemini] waiting for turn {turn}...")
                 async for audio_chunk in gemini.receive():
                     if session_stopped.is_set():
                         break
                     encoded = base64.b64encode(audio_chunk).decode()
                     await websocket.send_text(json.dumps({"type": "audio", "data": encoded}))
                     log_event("audio_out", f"{len(audio_chunk)} bytes")
-        except Exception:
+                print(f"[gemini] turn {turn} done, stopped={session_stopped.is_set()}")
+                await asyncio.sleep(0)
+        except Exception as e:
+            print(f"[gemini] receive error turn {turn}: {type(e).__name__}: {e}")
             session_stopped.set()
 
     try:

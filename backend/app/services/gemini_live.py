@@ -83,7 +83,6 @@ class GeminiLiveSession:
         client = get_client()
         config = types.LiveConnectConfig(
             response_modalities=["AUDIO"],
-            media_resolution="MEDIA_RESOLUTION_MEDIUM",
             system_instruction=types.Content(
                 parts=[types.Part(text=self._system_prompt)]
             ),
@@ -91,10 +90,6 @@ class GeminiLiveSession:
                 voice_config=types.VoiceConfig(
                     prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Zephyr")
                 )
-            ),
-            context_window_compression=types.ContextWindowCompressionConfig(
-                trigger_tokens=104857,
-                sliding_window=types.SlidingWindow(target_tokens=52428),
             ),
         )
         self._ctx = client.aio.live.connect(
@@ -109,7 +104,6 @@ class GeminiLiveSession:
 
     async def send_audio(self, pcm_data: bytes):
         """Send raw PCM audio (16kHz, 16-bit, mono) to Gemini."""
-        # Mobile records to .wav which includes a RIFF header — strip it
         if pcm_data[:4] == b'RIFF':
             pcm_data = pcm_data[44:]
         if not pcm_data:
@@ -125,7 +119,7 @@ class GeminiLiveSession:
         )
 
     async def receive(self) -> AsyncGenerator[bytes, None]:
-        """Yield audio response chunks (PCM 24kHz) from Gemini."""
+        """Yield audio response chunks (PCM 24kHz) for one turn, then return."""
         async for response in self._session.receive():
             server_content = getattr(response, "server_content", None)
             if server_content:
@@ -135,35 +129,41 @@ class GeminiLiveSession:
                         inline = getattr(part, "inline_data", None)
                         if inline and getattr(inline, "data", None):
                             yield inline.data
+                if getattr(server_content, "turn_complete", False):
+                    print("[gemini] turn_complete received, ready for next turn")
+                    return
 
 
 async def generate_embedding(text: str) -> list[float]:
-    """Generate a text embedding using Gemini text-embedding-004."""
-    client = get_client()
-    result = await client.aio.models.embed_content(
-        model=settings.GEMINI_EMBEDDING_MODEL,
-        contents=text,
-    )
-    return result.embeddings[0].values
+    """Generate a text embedding. Returns empty list on failure."""
+    try:
+        result = await get_client().aio.models.embed_content(
+            model="models/text-embedding-004",
+            contents=text,
+        )
+        return result.embeddings[0].values
+    except Exception as e:
+        print(f"[embedding] failed: {e}")
+        return []
 
 
 async def summarize_session(events: list[dict]) -> str:
     """Ask Gemini to summarize a cooking session from logged events."""
     try:
-        client = get_client()
         event_log = "\n".join(
             f"[{e['time']}] {e['type']}: {e.get('detail', '')}" for e in events[:50]
         )
         prompt = (
-            f"Summarize this cooking session in 2-3 sentences for memory storage. "
-            f"Focus on what was cooked, any issues, and what the user did well or struggled with:\n\n{event_log}"
+            "Summarize this cooking session in 2-3 sentences for memory storage. "
+            "Focus on what was cooked, any issues, and what the user did well or struggled with:\n\n"
+            + event_log
         )
-        response = await client.aio.models.generate_content(
-            model="models/gemini-2.0-flash",
+        response = await get_client().aio.models.generate_content(
+            model="gemini-1.5-flash",
             contents=prompt,
         )
         return response.text.strip()
     except Exception as e:
-        print(f"[summarize] Gemini summarization failed, using fallback: {e}")
+        print(f"[summarize] failed, using fallback: {e}")
         audio_turns = sum(1 for ev in events if ev["type"] == "audio_in")
         return f"Cooking session with {audio_turns} audio exchanges."

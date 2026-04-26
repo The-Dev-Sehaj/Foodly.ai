@@ -93,23 +93,29 @@ export function useSession(recipe?: string) {
       (global as any).__foodlyIsPlaying = true;
       sound.setOnPlaybackStatusUpdate(async (s) => {
         if (s.isLoaded && s.didJustFinish) {
+          // Clear the stale recording first, while isPlayingRef is still true,
+          // so the chunk interval can't race with us.
+          try { await recordingRef.current?.stopAndUnloadAsync(); } catch {}
+          recordingRef.current = null;
+          // Now safe to clear the playing flag
           isPlayingRef.current = false;
           (global as any).__foodlyIsPlaying = false;
           sound.unloadAsync();
-          // Restore recording mode
           await Audio.setAudioModeAsync({
             allowsRecordingIOS: true,
             playsInSilentModeIOS: true,
             playThroughEarpiece: false,
           }).catch(() => {});
+          // sendAudioChunk will see null ref and start a fresh recording on next tick
           if (pcmBufferRef.current.length > 0) flushAndPlay();
         }
       });
     } catch (e) {
       console.warn("[audio] playback failed:", e);
+      try { await recordingRef.current?.stopAndUnloadAsync(); } catch {}
+      recordingRef.current = null;
       isPlayingRef.current = false;
       (global as any).__foodlyIsPlaying = false;
-      // Restore recording mode on failure
       Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -158,21 +164,33 @@ export function useSession(recipe?: string) {
   }, []);
 
   const sendAudioChunk = useCallback(async () => {
-    if (!recordingRef.current || !wsRef.current) return;
+    if (!wsRef.current) return;
+    if (isPlayingRef.current) return;
+    // Recording was cleared during playback cleanup — start fresh, send next tick
+    if (!recordingRef.current) {
+      try {
+        const newRec = new Audio.Recording();
+        await newRec.prepareToRecordAsync(RECORDING_OPTIONS);
+        await newRec.startAsync();
+        recordingRef.current = newRec;
+      } catch {}
+      return;
+    }
     try {
       await recordingRef.current.stopAndUnloadAsync();
       const uri = recordingRef.current.getURI();
       if (uri) {
         const response = await fetch(uri);
         const buffer = await response.arrayBuffer();
-        // Use safe encoder — avoids stack overflow on large buffers
         wsRef.current.sendAudio(toBase64(new Uint8Array(buffer)));
       }
       const newRec = new Audio.Recording();
       await newRec.prepareToRecordAsync(RECORDING_OPTIONS);
       await newRec.startAsync();
       recordingRef.current = newRec;
-    } catch {}
+    } catch {
+      recordingRef.current = null;
+    }
   }, []);
 
   // ── Start session ─────────────────────────────────────────────
@@ -220,7 +238,11 @@ export function useSession(recipe?: string) {
     };
   }, [stopRecording]);
 
-  return { ...state, start, end };
+  const sendVideo = useCallback((base64: string) => {
+    wsRef.current?.sendVideo(base64);
+  }, []);
+
+  return { ...state, start, end, sendVideo };
 }
 
 const RECORDING_OPTIONS: Audio.RecordingOptions = {

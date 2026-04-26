@@ -64,18 +64,19 @@ async def save_session(
     summary = await summarize_session(events)
     embedding = await generate_embedding(summary)
 
-    db.table("cooking_sessions").insert(
-        {
-            "id": session_id,
-            "user_id": user_id,
-            "recipe_name": recipe_name,
-            "summary": summary,
-            "embedding": embedding,
-            "duration_seconds": duration_seconds,
-            "completion_percentage": completion_percentage,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-    ).execute()
+    row = {
+        "id": session_id,
+        "user_id": user_id,
+        "recipe_name": recipe_name,
+        "summary": summary,
+        "duration_seconds": duration_seconds,
+        "completion_percentage": completion_percentage,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if embedding:
+        row["embedding"] = embedding
+
+    db.table("cooking_sessions").insert(row).execute()
 
     ingredient_events = [e for e in events if e["type"] == "ingredient"]
     if ingredient_events:

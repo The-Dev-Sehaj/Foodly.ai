@@ -20,7 +20,6 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { useSession } from "@/hooks/useSession";
-import { FoodlyWebSocket } from "@/services/websocket";
 
 const { width } = Dimensions.get("window");
 
@@ -28,10 +27,9 @@ export default function SessionScreen() {
   const { recipe } = useLocalSearchParams<{ recipe?: string }>();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
-  const wsRef = useRef<FoodlyWebSocket | null>(null);
   const videoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { status, sessionId, durationSeconds, error, start, end } = useSession(recipe);
+  const { status, sessionId, durationSeconds, error, start, end, sendVideo } = useSession(recipe);
 
   // Pulse animation for the recording indicator
   const pulse = useSharedValue(1);
@@ -84,13 +82,13 @@ export default function SessionScreen() {
       capturing = true;
       try {
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.05,   // minimum quality — smaller file = shorter preview pause
+          quality: 0.4,
           base64: true,
           skipProcessing: true,
           exif: false,
         });
         if (photo?.base64) {
-          (global as any).__foodlyWs?.sendVideo(photo.base64);
+          sendVideo(photo.base64);
         }
       } catch {}
       capturing = false;
@@ -101,11 +99,9 @@ export default function SessionScreen() {
     };
   }, [status]);
 
-  // Expose ws for video sending (see interval above)
   useEffect(() => {
     return () => {
       if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
-      delete (global as any).__foodlyWs;
     };
   }, []);
 
