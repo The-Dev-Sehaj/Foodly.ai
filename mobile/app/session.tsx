@@ -8,8 +8,7 @@ import {
   Dimensions,
   Alert,
 } from "react-native";
-import { CameraView, CameraType, useCameraPermissions } from "expo-camera";
-import { LinearGradient } from "expo-linear-gradient";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { router, useLocalSearchParams } from "expo-router";
 import Animated, {
   useSharedValue,
@@ -17,11 +16,19 @@ import Animated, {
   withRepeat,
   withTiming,
   withSequence,
+  withSpring,
   Easing,
 } from "react-native-reanimated";
 import { useSession } from "@/hooks/useSession";
 
 const { width } = Dimensions.get("window");
+
+const C = {
+  accent: "#C4813A",
+  brown: "#3D2010",
+  cream: "#FAF5EE",
+  white: "#FFFFFF",
+};
 
 export default function SessionScreen() {
   const { recipe } = useLocalSearchParams<{ recipe?: string }>();
@@ -31,28 +38,38 @@ export default function SessionScreen() {
 
   const { status, sessionId, durationSeconds, error, start, end, sendVideo } = useSession(recipe);
 
-  // Pulse animation for the recording indicator
+  // Pulse for the recording dot
   const pulse = useSharedValue(1);
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulse.value }],
-    opacity: pulse.value,
+    opacity: pulse.value > 1.1 ? 1 : 0.7 + (pulse.value - 1) * 3,
+  }));
+
+  // Status pill slide-in
+  const pillY = useSharedValue(20);
+  const pillOpacity = useSharedValue(0);
+  const pillStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: pillY.value }],
+    opacity: pillOpacity.value,
   }));
 
   useEffect(() => {
     if (status === "active") {
       pulse.value = withRepeat(
         withSequence(
-          withTiming(1.3, { duration: 600, easing: Easing.out(Easing.ease) }),
-          withTiming(1, { duration: 600, easing: Easing.in(Easing.ease) })
+          withTiming(1.4, { duration: 700, easing: Easing.out(Easing.ease) }),
+          withTiming(1, { duration: 700, easing: Easing.in(Easing.ease) })
         ),
         -1
       );
+      pillY.value = withSpring(0, { damping: 14 });
+      pillOpacity.value = withTiming(1, { duration: 400 });
     } else {
       pulse.value = withTiming(1);
     }
   }, [status]);
 
-  // Request camera permission and start session on mount
+  // Request camera + start session on mount
   useEffect(() => {
     (async () => {
       if (!cameraPermission?.granted) {
@@ -60,7 +77,7 @@ export default function SessionScreen() {
         if (!result.granted) {
           Alert.alert(
             "Camera Required",
-            "Foodly needs camera access to watch your cooking technique.",
+            "Foodly needs camera access to watch your cooking.",
             [{ text: "OK", onPress: () => router.back() }]
           );
           return;
@@ -70,14 +87,12 @@ export default function SessionScreen() {
     })();
   }, []);
 
-  // Send video frames while session is active
+  // Video frame capture
   useEffect(() => {
     if (status !== "active" || !cameraRef.current) return;
-
     let capturing = false;
 
     videoIntervalRef.current = setInterval(async () => {
-      // Never interrupt Foodly mid-sentence — skip frame if audio is playing
       if (capturing || !cameraRef.current || (global as any).__foodlyIsPlaying) return;
       capturing = true;
       try {
@@ -87,17 +102,15 @@ export default function SessionScreen() {
           skipProcessing: true,
           exif: false,
         });
-        if (photo?.base64) {
-          sendVideo(photo.base64);
-        }
+        if (photo?.base64) sendVideo(photo.base64);
       } catch {}
       capturing = false;
-    }, 4000); // one frame every 4s — reduces shutter clicks and JS thread contention
+    }, 4000);
 
     return () => {
       if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
     };
-  }, [status]);
+  }, [status, sendVideo]);
 
   useEffect(() => {
     return () => {
@@ -118,17 +131,17 @@ export default function SessionScreen() {
 
   if (status === "ended") {
     return (
-      <LinearGradient colors={["#0A0A0A", "#0F1A0A"]} style={styles.centerFill}>
-        <Text style={styles.doneEmoji}>✅</Text>
+      <View style={styles.doneBg}>
+        <Text style={styles.doneEmoji}>🎉</Text>
         <Text style={styles.doneTitle}>Session saved!</Text>
         <Text style={styles.doneSub}>Check your history for the summary.</Text>
-      </LinearGradient>
+      </View>
     );
   }
 
   return (
     <View style={styles.fill}>
-      {/* Camera fills the screen */}
+      {/* Camera full-screen */}
       <CameraView
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
@@ -136,56 +149,50 @@ export default function SessionScreen() {
         animateShutter={false}
       />
 
-      {/* Dark gradient overlay at top and bottom */}
-      <LinearGradient
-        colors={["rgba(0,0,0,0.7)", "transparent"]}
-        style={styles.topOverlay}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={["transparent", "rgba(0,0,0,0.85)"]}
-        style={styles.bottomOverlay}
-        pointerEvents="none"
-      />
+      {/* Soft dark vignette at top & bottom */}
+      <View style={styles.topGradient} />
+      <View style={styles.bottomGradient} />
 
       {/* Top bar */}
       <SafeAreaView style={styles.topBar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>✕</Text>
         </TouchableOpacity>
+
         <View style={styles.recipeTag}>
           <Text style={styles.recipeTagText} numberOfLines={1}>
-            {recipe || "Free cooking"}
+            {recipe ? `🍳 ${recipe}` : "🦫 Free cooking"}
           </Text>
         </View>
+
         {status === "active" && (
           <Animated.View style={[styles.recordingDot, pulseStyle]} />
         )}
       </SafeAreaView>
 
-      {/* Status overlay */}
-      <View style={styles.statusOverlay} pointerEvents="none">
+      {/* Status pill */}
+      <Animated.View style={[styles.statusWrap, pillStyle]} pointerEvents="none">
         {status === "connecting" && (
-          <View style={styles.statusPill}>
-            <Text style={styles.statusText}>Connecting to Foodly...</Text>
+          <View style={styles.pill}>
+            <Text style={styles.pillText}>Connecting to Foodly...</Text>
           </View>
         )}
         {status === "active" && (
-          <View style={[styles.statusPill, styles.activePill]}>
-            <Text style={styles.statusText}>🎤 Foodly is listening</Text>
+          <View style={[styles.pill, styles.pillActive]}>
+            <Text style={styles.pillText}>🎤  Foodly is listening</Text>
           </View>
         )}
         {status === "ending" && (
-          <View style={styles.statusPill}>
-            <Text style={styles.statusText}>Saving session...</Text>
+          <View style={styles.pill}>
+            <Text style={styles.pillText}>Saving your session...</Text>
           </View>
         )}
         {error && (
-          <View style={[styles.statusPill, styles.errorPill]}>
-            <Text style={styles.statusText}>⚠️ {error}</Text>
+          <View style={[styles.pill, styles.pillError]}>
+            <Text style={styles.pillText}>⚠️  {error}</Text>
           </View>
         )}
-      </View>
+      </Animated.View>
 
       {/* Bottom controls */}
       <SafeAreaView style={styles.bottomBar}>
@@ -200,8 +207,11 @@ export default function SessionScreen() {
           style={[styles.endButton, status !== "active" && styles.endButtonDisabled]}
           onPress={handleEnd}
           disabled={status !== "active"}
+          activeOpacity={0.85}
         >
-          <Text style={styles.endButtonText}>End Session</Text>
+          <Text style={styles.endButtonText}>
+            {status === "active" ? "End Session" : "Please wait..."}
+          </Text>
         </TouchableOpacity>
       </SafeAreaView>
     </View>
@@ -210,98 +220,119 @@ export default function SessionScreen() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: "#000" },
-  centerFill: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#0A0A0A",
+
+  // Vignette overlays
+  topGradient: {
+    position: "absolute", top: 0, left: 0, right: 0, height: 180,
+    backgroundColor: "transparent",
+    // soft shadow via border trick
+    shadowColor: "#000",
   },
-  topOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 160,
+  bottomGradient: {
+    position: "absolute", bottom: 0, left: 0, right: 0, height: 260,
   },
-  bottomOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 260,
-  },
+
+  // Top bar
   topBar: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
+    position: "absolute", top: 0, left: 0, right: 0,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingTop: 8,
-    gap: 12,
+    gap: 10,
   },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(250,245,238,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  backText: { color: "#FFF", fontSize: 15, fontWeight: "800" },
+  recipeTag: {
+    flex: 1,
+    backgroundColor: "rgba(250,245,238,0.2)",
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+  },
+  recipeTagText: { color: "#FFF", fontSize: 14, fontWeight: "700" },
+  recordingDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: C.accent,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+  },
+
+  // Status pill
+  statusWrap: {
+    position: "absolute",
+    top: "44%",
+    left: 28,
+    right: 28,
+    alignItems: "center",
+  },
+  pill: {
+    backgroundColor: "rgba(61,32,16,0.75)",
+    borderRadius: 28,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "rgba(232,213,176,0.3)",
+  },
+  pillActive: {
+    backgroundColor: "rgba(196,129,58,0.85)",
+    borderColor: "rgba(232,213,176,0.5)",
+  },
+  pillError: { backgroundColor: "rgba(192,57,43,0.8)" },
+  pillText: { color: "#FFF", fontSize: 15, fontWeight: "700" },
+
+  // Bottom bar
+  bottomBar: {
+    position: "absolute",
+    bottom: 0, left: 0, right: 0,
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    gap: 12,
+  },
+  hint: { color: "rgba(250,245,238,0.7)", fontSize: 13, textAlign: "center", fontWeight: "600" },
+  endButton: {
+    backgroundColor: C.accent,
+    borderRadius: 32,
+    paddingHorizontal: 48,
+    paddingVertical: 17,
+    width: width - 48,
+    alignItems: "center",
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  endButtonDisabled: {
+    backgroundColor: "rgba(61,32,16,0.5)",
+    shadowOpacity: 0,
+  },
+  endButtonText: { color: "#FFF", fontSize: 17, fontWeight: "800" },
+
+  // Done screen
+  doneBg: {
+    flex: 1,
+    backgroundColor: C.cream,
     alignItems: "center",
     justifyContent: "center",
   },
-  backText: { color: "#FFF", fontSize: 16, fontWeight: "700" },
-  recipeTag: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  recipeTagText: { color: "#FFF", fontSize: 14, fontWeight: "600" },
-  recordingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#FF3D00",
-  },
-  statusOverlay: {
-    position: "absolute",
-    top: "45%",
-    left: 24,
-    right: 24,
-    alignItems: "center",
-  },
-  statusPill: {
-    backgroundColor: "rgba(0,0,0,0.7)",
-    borderRadius: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  activePill: { backgroundColor: "rgba(255,107,53,0.3)", borderWidth: 1, borderColor: "#FF6B35" },
-  errorPill: { backgroundColor: "rgba(255,0,0,0.3)" },
-  statusText: { color: "#FFF", fontSize: 15, fontWeight: "600" },
-  bottomBar: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    gap: 12,
-  },
-  hint: { color: "rgba(255,255,255,0.5)", fontSize: 13, textAlign: "center" },
-  endButton: {
-    backgroundColor: "#FF3D00",
-    borderRadius: 30,
-    paddingHorizontal: 48,
-    paddingVertical: 16,
-    width: width - 48,
-    alignItems: "center",
-  },
-  endButtonDisabled: { backgroundColor: "#333" },
-  endButtonText: { color: "#FFF", fontSize: 17, fontWeight: "700" },
-  doneEmoji: { fontSize: 64, marginBottom: 16 },
-  doneTitle: { fontSize: 24, fontWeight: "800", color: "#FFF", marginBottom: 8 },
-  doneSub: { fontSize: 15, color: "#666" },
+  doneEmoji: { fontSize: 72, marginBottom: 16 },
+  doneTitle: { fontSize: 26, fontWeight: "900", color: C.brown, marginBottom: 8 },
+  doneSub: { fontSize: 15, color: "#8B5E3C" },
 });

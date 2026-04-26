@@ -1,15 +1,5 @@
 import { Tabs } from "expo-router";
-import { View, StyleSheet } from "react-native";
-
-function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
-  return (
-    <View style={[styles.icon, focused && styles.iconFocused]}>
-      <View>
-        {/* Using emoji as icon placeholder */}
-      </View>
-    </View>
-  );
-}
+import { Text, StyleSheet } from "react-native";
 
 export default function TabsLayout() {
   return (
@@ -17,9 +7,9 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: "#FF6B35",
-        tabBarInactiveTintColor: "#555",
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        tabBarActiveTintColor: "#C4813A",
+        tabBarInactiveTintColor: "#B09070",
+        tabBarLabelStyle: styles.label,
       }}
     >
       <Tabs.Screen
@@ -27,7 +17,7 @@ export default function TabsLayout() {
         options={{
           title: "Cook",
           tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="🍳" focused={focused} />
+            <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>🍳</Text>
           ),
         }}
       />
@@ -36,7 +26,7 @@ export default function TabsLayout() {
         options={{
           title: "History",
           tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="📖" focused={focused} />
+            <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>📖</Text>
           ),
         }}
       />
@@ -45,7 +35,7 @@ export default function TabsLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="👤" focused={focused} />
+            <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>🦫</Text>
           ),
         }}
       />
@@ -55,11 +45,12 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: "#0F0F0F",
-    borderTopColor: "#1E1E1E",
+    backgroundColor: "#FAF5EE",
+    borderTopColor: "#E8D5B0",
+    borderTopWidth: 1.5,
     height: 84,
-    paddingBottom: 24,
+    paddingBottom: 22,
+    paddingTop: 8,
   },
-  icon: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
-  iconFocused: {},
+  label: { fontSize: 11, fontWeight: "700" },
 });

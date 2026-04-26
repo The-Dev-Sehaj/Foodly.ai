@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,16 +9,43 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Animated,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
 import { supabase } from "@/services/supabase";
+
+const C = {
+  cream: "#FAF5EE",
+  white: "#FFFFFF",
+  brown: "#3D2010",
+  mid: "#8B5E3C",
+  accent: "#C4813A",
+  light: "#F0E2C8",
+  border: "#E8D5B0",
+};
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"login" | "signup">("login");
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(40)).current;
+  const mascotBounce = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 9, useNativeDriver: true }),
+    ]).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(mascotBounce, { toValue: -8, duration: 1200, useNativeDriver: true }),
+        Animated.timing(mascotBounce, { toValue: 0, duration: 1200, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
   async function handleSubmit() {
     if (!email || !password) return;
@@ -30,9 +57,7 @@ export default function LoginScreen() {
       } else {
         const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        if (!data.session) {
-          Alert.alert("Check your email", "We sent you a confirmation link.");
-        }
+        if (!data.session) Alert.alert("Check your email", "We sent you a confirmation link.");
       }
     } catch (err: any) {
       Alert.alert("Error", err.message);
@@ -42,22 +67,30 @@ export default function LoginScreen() {
   }
 
   return (
-    <LinearGradient colors={["#0A0A0A", "#1A1A2E"]} style={styles.gradient}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.container}
-      >
-        <View style={styles.header}>
-          <Text style={styles.logo}>🍳</Text>
-          <Text style={styles.title}>foodly</Text>
-          <Text style={styles.subtitle}>Your AI cooking companion</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.root}
+    >
+      <Animated.View style={[styles.inner, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+        {/* Mascot & branding */}
+        <View style={styles.hero}>
+          <Animated.Text style={[styles.mascot, { transform: [{ translateY: mascotBounce }] }]}>
+            🦫
+          </Animated.Text>
+          <Text style={styles.logo}>foodly.ai</Text>
+          <Text style={styles.tagline}>LET IT COOK</Text>
         </View>
 
-        <View style={styles.form}>
+        {/* Form card */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>
+            {mode === "login" ? "Welcome back! 👋" : "Join foodly! 🎉"}
+          </Text>
+
           <TextInput
             style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#666"
+            placeholder="Email address"
+            placeholderTextColor={C.mid + "80"}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -66,7 +99,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="Password"
-            placeholderTextColor="#666"
+            placeholderTextColor={C.mid + "80"}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -76,60 +109,81 @@ export default function LoginScreen() {
             style={styles.button}
             onPress={handleSubmit}
             disabled={loading}
+            activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator color="#0A0A0A" />
+              <ActivityIndicator color="#FFF" />
             ) : (
               <Text style={styles.buttonText}>
-                {mode === "login" ? "Sign In" : "Create Account"}
+                {mode === "login" ? "Sign In →" : "Create Account →"}
               </Text>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={() => setMode(mode === "login" ? "signup" : "login")}
-          >
+          <TouchableOpacity onPress={() => setMode(mode === "login" ? "signup" : "login")}>
             <Text style={styles.toggle}>
               {mode === "login"
-                ? "Don't have an account? Sign up"
+                ? "New here? Create an account"
                 : "Already have an account? Sign in"}
             </Text>
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+      </Animated.View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: { flex: 1 },
-  container: { flex: 1, justifyContent: "center", padding: 32 },
-  header: { alignItems: "center", marginBottom: 48 },
-  logo: { fontSize: 64, marginBottom: 8 },
-  title: {
-    fontSize: 42,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    letterSpacing: -1,
+  root: { flex: 1, backgroundColor: C.cream },
+  inner: { flex: 1, justifyContent: "center", padding: 28 },
+  hero: { alignItems: "center", marginBottom: 36 },
+  mascot: { fontSize: 80, marginBottom: 4 },
+  logo: {
+    fontSize: 40,
+    fontWeight: "900",
+    color: C.brown,
+    letterSpacing: -0.5,
   },
-  subtitle: { fontSize: 16, color: "#888", marginTop: 4 },
-  form: { gap: 12 },
+  tagline: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: C.mid,
+    letterSpacing: 4,
+    marginTop: 4,
+  },
+  card: {
+    backgroundColor: C.white,
+    borderRadius: 28,
+    padding: 24,
+    shadowColor: C.brown,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 5,
+    gap: 12,
+  },
+  cardTitle: { fontSize: 20, fontWeight: "800", color: C.brown, marginBottom: 4 },
   input: {
-    backgroundColor: "#1E1E1E",
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: C.light,
+    borderRadius: 16,
+    padding: 15,
     fontSize: 16,
-    color: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#2E2E2E",
+    color: C.brown,
+    borderWidth: 1.5,
+    borderColor: C.border,
   },
   button: {
-    backgroundColor: "#FF6B35",
-    borderRadius: 14,
-    padding: 18,
+    backgroundColor: C.accent,
+    borderRadius: 18,
+    padding: 17,
     alignItems: "center",
-    marginTop: 8,
+    marginTop: 4,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  buttonText: { color: "#FFFFFF", fontSize: 17, fontWeight: "700" },
-  toggle: { color: "#888", textAlign: "center", marginTop: 16, fontSize: 14 },
+  buttonText: { color: "#FFF", fontSize: 17, fontWeight: "800" },
+  toggle: { color: C.mid, textAlign: "center", fontSize: 14, fontWeight: "600", marginTop: 4 },
 });
