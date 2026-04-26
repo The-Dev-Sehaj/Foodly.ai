@@ -65,3 +65,54 @@ export interface UserProfile {
   skill_level: string;
   equipment: string[];
 }
+
+export interface RecipeIngredient {
+  name: string;
+  amount: string;
+}
+
+export interface SavedRecipe {
+  id: string;
+  title: string;
+  description: string | null;
+  cooking_time: string | null;
+  servings: number | null;
+  difficulty: string | null;
+  ingredients: RecipeIngredient[];
+  steps: string[];
+  tips: string[];
+  query: string | null;
+  created_at: string;
+}
+
+export async function generateRecipe(query: string): Promise<SavedRecipe> {
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}/api/recipes/generate`, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail ?? `Server error ${res.status}`);
+  }
+  const data = await res.json();
+  return data.recipe;
+}
+
+export async function getRecipes(): Promise<SavedRecipe[]> {
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}/api/recipes`, { headers });
+  if (!res.ok) throw new Error("Failed to fetch recipes");
+  const data = await res.json();
+  return data.recipes;
+}
+
+export async function deleteRecipe(recipeId: string): Promise<void> {
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}/api/recipes/${recipeId}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) throw new Error("Failed to delete recipe");
+}

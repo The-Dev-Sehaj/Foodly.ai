@@ -22,6 +22,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="ingredients"
+        options={{
+          title: "Recipes",
+          tabBarIcon: ({ focused }) => (
+            <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>📋</Text>
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="history"
         options={{
           title: "History",

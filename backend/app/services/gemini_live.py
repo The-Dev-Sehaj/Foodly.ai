@@ -5,9 +5,11 @@ from google.genai import types
 from app.config import settings
 
 _client: genai.Client | None = None
+_flash_client: genai.Client | None = None
 
 
 def get_client() -> genai.Client:
+    """v1beta client — required for Gemini Live API."""
     global _client
     if _client is None:
         _client = genai.Client(
@@ -15,6 +17,17 @@ def get_client() -> genai.Client:
             http_options={"api_version": "v1beta"},
         )
     return _client
+
+
+def get_flash_client() -> genai.Client:
+    """Standard v1 client for generate_content / embed_content calls."""
+    global _flash_client
+    if _flash_client is None:
+        _flash_client = genai.Client(
+            api_key=settings.GEMINI_API_KEY,
+            http_options={"api_version": "v1"},
+        )
+    return _flash_client
 
 
 SYSTEM_PROMPT_TEMPLATE = """\
@@ -146,7 +159,7 @@ class GeminiLiveSession:
 async def generate_embedding(text: str) -> list[float]:
     """Generate a text embedding. Returns empty list on failure."""
     try:
-        result = await get_client().aio.models.embed_content(
+        result = await get_flash_client().aio.models.embed_content(
             model="models/text-embedding-004",
             contents=text,
         )
@@ -198,14 +211,15 @@ For highlights: pull specific coaching moments or topics from the transcript (up
 For tips: reminders worth keeping for next time based on what came up (up to 3).
 For ingredients: any ingredients mentioned in the transcript (up to 10, or infer for {recipe_label})."""
 
-        response = await get_client().aio.models.generate_content(
-            model="gemini-1.5-flash",
+        response = await get_flash_client().aio.models.generate_content(
+            model="gemini-2.5-flash-lite",
             contents=prompt,
         )
+        import re as _re
         text = response.text.strip()
-        if text.startswith("```"):
-            lines = text.splitlines()
-            text = "\n".join(lines[1:-1])
+        match = _re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, _re.DOTALL)
+        if match:
+            text = match.group(1).strip()
         return _json.loads(text)
     except Exception as e:
         print(f"[summarize] structured summary failed: {e}")

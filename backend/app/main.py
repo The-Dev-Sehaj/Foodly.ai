@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import session, history, profile
+from app.api.routes import session, history, profile, recipes
 
 app = FastAPI(title="Foodly.ai API", version="1.0.0")
 
@@ -15,6 +15,7 @@ app.add_middleware(
 app.include_router(session.router)
 app.include_router(history.router, prefix="/api")
 app.include_router(profile.router, prefix="/api")
+app.include_router(recipes.router, prefix="/api")
 
 
 @app.get("/health")
