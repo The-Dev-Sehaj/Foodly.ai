@@ -102,6 +102,10 @@ class GeminiLiveSession:
         if self._ctx:
             await self._ctx.__aexit__(*args)
 
+    async def send_text(self, text: str):
+        """Trigger an initial Gemini response using realtime text input."""
+        await self._session.send_realtime_input(text=text)
+
     async def send_audio(self, pcm_data: bytes):
         """Send raw PCM audio (16kHz, 16-bit, mono) to Gemini."""
         if pcm_data[:4] == b'RIFF':

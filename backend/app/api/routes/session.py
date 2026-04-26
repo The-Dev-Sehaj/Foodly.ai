@@ -138,13 +138,29 @@ async def cooking_session(websocket: WebSocket):
         print("[session] Connecting to Gemini Live...")
         async with GeminiLiveSession(system_prompt) as gemini:
             print("[session] Gemini connected, starting relay")
-            done, pending = await asyncio.wait(
-                [
-                    asyncio.create_task(client_to_gemini(gemini)),
-                    asyncio.create_task(gemini_to_client(gemini)),
-                ],
-                return_when=asyncio.FIRST_COMPLETED,
-            )
+            relay = [
+                asyncio.create_task(client_to_gemini(gemini)),
+                asyncio.create_task(gemini_to_client(gemini)),
+            ]
+            # Let both tasks reach their first await so gemini_to_client
+            # is already listening before the greeting is sent.
+            await asyncio.sleep(0.3)
+            if recipe_name:
+                greeting = (
+                    f"The user just started a session to cook {recipe_name}. "
+                    f"Greet them warmly, confirm you're ready to help with {recipe_name}, "
+                    f"and ask if they have their ingredients ready."
+                )
+            else:
+                greeting = (
+                    "The user just opened a free cooking session. "
+                    "Greet them warmly as Foodly and ask what they'd like to cook today."
+                )
+            try:
+                await gemini.send_text(greeting)
+            except Exception as e:
+                print(f"[session] greeting failed (non-fatal): {e}")
+            done, pending = await asyncio.wait(relay, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
                 try:

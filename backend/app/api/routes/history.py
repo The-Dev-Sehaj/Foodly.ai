@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from supabase import Client
 from app.api.deps import get_db, verify_token
 from app.services.memory_service import get_session_history
@@ -52,3 +52,25 @@ async def get_session_detail(
         "steps": steps.data or [],
         "ingredients": ingredients.data or [],
     }
+
+
+@router.delete("/{session_id}")
+async def delete_session(
+    session_id: str,
+    user_id: str = Depends(verify_token),
+    db: Client = Depends(get_db),
+):
+    # Verify ownership before deleting
+    check = (
+        db.table("cooking_sessions")
+        .select("id")
+        .eq("id", session_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    db.table("ingredients_used").delete().eq("session_id", session_id).execute()
+    db.table("cooking_sessions").delete().eq("id", session_id).execute()
+    return {"deleted": session_id}

@@ -29,6 +29,15 @@ export async function getProfile() {
   return res.json() as Promise<UserProfile>;
 }
 
+export async function deleteSession(sessionId: string): Promise<void> {
+  const headers = await authHeaders();
+  const res = await fetch(`${BASE}/api/history/${sessionId}`, {
+    method: "DELETE",
+    headers,
+  });
+  if (!res.ok) throw new Error("Failed to delete session");
+}
+
 export async function updateProfile(updates: Partial<UserProfile>) {
   const headers = await authHeaders();
   const res = await fetch(`${BASE}/api/profile`, {

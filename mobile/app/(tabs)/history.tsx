@@ -7,10 +7,11 @@ import {
   StyleSheet,
   SafeAreaView,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import { getHistory, CookingSession } from "@/services/api";
+import { getHistory, deleteSession, CookingSession } from "@/services/api";
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -35,6 +36,28 @@ export default function HistoryScreen() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  function confirmDelete(session: CookingSession) {
+    Alert.alert(
+      "Delete Session",
+      `Remove "${session.recipe_name ?? "this session"}" from your history? Foodly won't remember it.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteSession(session.id);
+              setSessions((prev) => prev.filter((s) => s.id !== session.id));
+            } catch {
+              Alert.alert("Error", "Could not delete session. Try again.");
+            }
+          },
+        },
+      ]
+    );
+  }
 
   return (
     <LinearGradient colors={["#0A0A0A", "#0F0F1A"]} style={{ flex: 1 }}>
@@ -69,20 +92,29 @@ export default function HistoryScreen() {
                   <Text style={styles.recipeName} numberOfLines={1}>
                     {item.recipe_name ?? "Unnamed session"}
                   </Text>
-                  <View
-                    style={[
-                      styles.badge,
-                      { backgroundColor: item.completion_percentage >= 80 ? "#1A3A1A" : "#2A2A1A" },
-                    ]}
-                  >
-                    <Text
+                  <View style={styles.cardTopRight}>
+                    <View
                       style={[
-                        styles.badgeText,
-                        { color: item.completion_percentage >= 80 ? "#4CAF50" : "#FFC107" },
+                        styles.badge,
+                        { backgroundColor: item.completion_percentage >= 80 ? "#1A3A1A" : "#2A2A1A" },
                       ]}
                     >
-                      {item.completion_percentage}%
-                    </Text>
+                      <Text
+                        style={[
+                          styles.badgeText,
+                          { color: item.completion_percentage >= 80 ? "#4CAF50" : "#FFC107" },
+                        ]}
+                      >
+                        {item.completion_percentage}%
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={(e) => { e.stopPropagation(); confirmDelete(item); }}
+                      style={styles.deleteBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.deleteBtnText}>🗑</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
                 {item.summary ? (
@@ -117,6 +149,9 @@ const styles = StyleSheet.create({
     borderColor: "#222",
   },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  cardTopRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  deleteBtn: { padding: 2 },
+  deleteBtnText: { fontSize: 16 },
   recipeName: { fontSize: 16, fontWeight: "700", color: "#FFF", flex: 1, marginRight: 8 },
   badge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText: { fontSize: 12, fontWeight: "700" },
